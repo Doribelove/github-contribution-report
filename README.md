@@ -22,6 +22,8 @@ Clone this repository, then run the script from its directory:
 python3 contribution_report.py Doribelove
 python3 contribution_report.py Doribelove --format json > contributions.json
 python3 contribution_report.py Doribelove --include-own > contributions.md
+python3 contribution_report.py Doribelove --state open
+python3 contribution_report.py Doribelove --state merged
 python3 contribution_report.py Doribelove --gh /path/to/gh
 ```
 
@@ -36,6 +38,11 @@ Destination repositories that are forks retain an explicit `isFork` field.
 
 - `MERGED` counts as merged; `CLOSED` counts as closed without merge.
 - Draft PRs are counted within open PRs and also summarized separately.
+- `--state open`, `--state merged`, or `--state closed` filters the displayed
+  rows and `counts` after fetching all public authored PRs. `closed` means
+  closed without merge. The `public_authored_total` and `own_repository_total`
+  fields still describe all fetched PRs, before either state or ownership
+  filtering. A filter with no matches produces an empty report.
 - Each PR includes its URL, title, number, state, draft status, merge/update times,
   review decision, repository ownership, and fork status.
 - Public authored PR totals and own-repository totals describe all fetched PRs;
