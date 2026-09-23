@@ -6,8 +6,9 @@ which changes were merged, which remain open, and which were closed without merg
 Reports are printed as Markdown or JSON for use in local records or a manually
 maintained portfolio.
 
-See a [real public contribution report](examples/Doribelove-2026-09-15.md)
-generated on September 15, 2026.
+See a [real public contribution report](examples/Doribelove-2026-09-23.md)
+generated on September 23, 2026. This is a dated snapshot; run the command
+above to check current pull request states.
 
 ## Requirements and setup
 
