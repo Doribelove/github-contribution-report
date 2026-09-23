@@ -65,6 +65,22 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(result["pull_requests"][0]["repository"]["isFork"])
         self.assertEqual(result["pull_requests"][0]["relationship"], "external")
 
+    @patch("contribution_report.subprocess.run")
+    def test_state_filter_keeps_counts_and_rows_in_the_same_scope(self, run):
+        run.return_value = response([pr(1, state="MERGED"), pr(2, state="CLOSED"),
+                                     pr(3, draft=True), pr(4, owner="doribelove", state="MERGED")])
+        merged = report.collect_report("Doribelove", state_filter="merged")
+        self.assertEqual(merged["counts"], {"total": 1, "merged": 1, "open": 0,
+                                             "closed_unmerged": 0, "draft": 0})
+        self.assertEqual([item["number"] for item in merged["pull_requests"]], [1])
+        self.assertEqual(merged["public_authored_total"], 4)
+        self.assertEqual(merged["own_repository_total"], 1)
+        self.assertIn("state: merged", merged["scope"])
+        self.assertEqual([item["number"] for item in report.collect_report(
+            "Doribelove", include_own=True, state_filter="merged")["pull_requests"]], [1, 4])
+        self.assertEqual(report.collect_report("Doribelove", state_filter="open")["counts"]["draft"], 1)
+        self.assertEqual(report.collect_report("Doribelove", state_filter="closed")["counts"]["closed_unmerged"], 1)
+
     @patch("contribution_report.subprocess.run", return_value=response([]))
     def test_empty_result_is_successful_report(self, run):
         result = report.collect_report("no-matches")
@@ -163,6 +179,16 @@ class ReportTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(report.main(["Doribelove", "--format", "json"]), 0)
         self.assertEqual(json.loads(output.getvalue())["counts"]["open"], 1)
+
+    @patch("contribution_report.subprocess.run", return_value=response([pr(state="OPEN")]))
+    def test_cli_state_filter_can_return_an_empty_report(self, run):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(report.main(["Doribelove", "--state", "merged", "--format", "json"]), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["counts"]["total"], 0)
+        self.assertEqual(result["public_authored_total"], 1)
+        self.assertEqual(result["pull_requests"], [])
 
     @patch("contribution_report.subprocess.run", return_value=response([], 1001))
     def test_cli_failure_leaves_stdout_empty(self, run):

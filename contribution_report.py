@@ -26,6 +26,7 @@ query ContributionReport($search: String!, $after: String) {
 }
 """
 SEARCH_LIMIT = 1000
+STATE_FILTERS = {"open": "OPEN", "merged": "MERGED", "closed": "CLOSED"}
 
 
 class ReportError(Exception):
@@ -109,8 +110,10 @@ def validate_pr(pr):
         raise ReportError("GitHub returned an incomplete or unexpected pull request") from exc
 
 
-def collect_report(username, gh="gh", include_own=False):
+def collect_report(username, gh="gh", include_own=False, state_filter=None):
     username = valid_username(username)
+    if state_filter is not None and state_filter not in STATE_FILTERS:
+        raise ValueError("state_filter must be open, merged, or closed")
     search = f"is:pr is:public author:{username} sort:updated-desc"
     prs, seen_urls, seen_cursors = [], set(), set()
     cursor, expected_count = None, None
@@ -142,9 +145,12 @@ def collect_report(username, gh="gh", include_own=False):
         raise ReportError("search returned an incomplete result set; retry for a complete report")
 
     own_count = sum(pr["repository"]["owner"]["login"].lower() == username.lower() for pr in prs)
-    selected = [dict(pr, relationship=(
-        "own" if pr["repository"]["owner"]["login"].lower() == username.lower() else "external"
-    )) for pr in prs if include_own or pr["repository"]["owner"]["login"].lower() != username.lower()]
+    selected = []
+    for pr in prs:
+        own = pr["repository"]["owner"]["login"].lower() == username.lower()
+        if (own and not include_own) or (state_filter and pr["state"] != STATE_FILTERS[state_filter]):
+            continue
+        selected.append(dict(pr, relationship="own" if own else "external"))
     counts = {"total": len(selected), "merged": 0, "open": 0, "closed_unmerged": 0, "draft": 0}
     for pr in selected:
         counts[{"MERGED": "merged", "OPEN": "open", "CLOSED": "closed_unmerged"}[pr["state"]]] += 1
@@ -152,7 +158,8 @@ def collect_report(username, gh="gh", include_own=False):
     return {
         "username": username,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "scope": "public, including own repositories" if include_own else "public, external repositories",
+        "scope": ("public, including own repositories" if include_own else "public, external repositories")
+        + (f"; state: {state_filter}" if state_filter else ""),
         "search_query": search,
         "public_authored_total": len(prs),
         "own_repository_total": own_count,
@@ -198,10 +205,11 @@ def main(argv=None):
     parser.add_argument("username", type=valid_username)
     parser.add_argument("--gh", default="gh", help="GitHub CLI executable (default: gh)")
     parser.add_argument("--include-own", action="store_true", help="include PRs to repositories owned by the author")
+    parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     args = parser.parse_args(argv)
     try:
-        report = collect_report(args.username, args.gh, args.include_own)
+        report = collect_report(args.username, args.gh, args.include_own, args.state)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
