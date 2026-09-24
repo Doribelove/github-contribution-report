@@ -42,6 +42,21 @@ def valid_username(value):
     return value
 
 
+def valid_repository(value):
+    """Accept one repository name without allowing search-query qualifiers."""
+    parts = value.split("/")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError("expected a repository as OWNER/NAME")
+    owner, name = parts
+    try:
+        valid_username(owner)
+    except argparse.ArgumentTypeError as exc:
+        raise argparse.ArgumentTypeError("expected a repository as OWNER/NAME") from exc
+    if not 1 <= len(name) <= 100 or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."}:
+        raise argparse.ArgumentTypeError("expected a repository as OWNER/NAME")
+    return value
+
+
 def fetch_page(gh, search, cursor):
     request = {"query": QUERY, "variables": {"search": search, "after": cursor}}
     try:
@@ -110,11 +125,16 @@ def validate_pr(pr):
         raise ReportError("GitHub returned an incomplete or unexpected pull request") from exc
 
 
-def collect_report(username, gh="gh", include_own=False, state_filter=None):
+def collect_report(username, gh="gh", include_own=False, state_filter=None, repository=None):
     username = valid_username(username)
     if state_filter is not None and state_filter not in STATE_FILTERS:
         raise ValueError("state_filter must be open, merged, or closed")
-    search = f"is:pr is:public author:{username} sort:updated-desc"
+    if repository is not None:
+        repository = valid_repository(repository)
+    search = f"is:pr is:public author:{username}"
+    if repository:
+        search += f" repo:{repository}"
+    search += " sort:updated-desc"
     prs, seen_urls, seen_cursors = [], set(), set()
     cursor, expected_count = None, None
     while True:
@@ -159,6 +179,7 @@ def collect_report(username, gh="gh", include_own=False, state_filter=None):
         "username": username,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": ("public, including own repositories" if include_own else "public, external repositories")
+        + (f"; repository: {repository}" if repository else "")
         + (f"; state: {state_filter}" if state_filter else ""),
         "search_query": search,
         "public_authored_total": len(prs),
@@ -205,11 +226,12 @@ def main(argv=None):
     parser.add_argument("username", type=valid_username)
     parser.add_argument("--gh", default="gh", help="GitHub CLI executable (default: gh)")
     parser.add_argument("--include-own", action="store_true", help="include PRs to repositories owned by the author")
+    parser.add_argument("--repo", type=valid_repository, help="limit search to one repository (OWNER/NAME)")
     parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     args = parser.parse_args(argv)
     try:
-        report = collect_report(args.username, args.gh, args.include_own, args.state)
+        report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

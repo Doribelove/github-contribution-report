@@ -9,13 +9,13 @@ from unittest.mock import patch
 import contribution_report as report
 
 
-def pr(number=1, owner="upstream", state="OPEN", draft=False, title="Fix behavior"):
+def pr(number=1, owner="upstream", repo="project", state="OPEN", draft=False, title="Fix behavior"):
     return {
-        "url": f"https://github.com/{owner}/project/pull/{number}",
+        "url": f"https://github.com/{owner}/{repo}/pull/{number}",
         "title": title, "number": number, "state": state, "isDraft": draft,
         "mergedAt": "2026-09-15T00:00:00Z" if state == "MERGED" else None,
         "updatedAt": "2026-09-15T00:00:00Z", "reviewDecision": None,
-        "repository": {"nameWithOwner": f"{owner}/project", "isFork": False, "owner": {"login": owner}},
+        "repository": {"nameWithOwner": f"{owner}/{repo}", "isFork": False, "owner": {"login": owner}},
     }
 
 
@@ -80,6 +80,24 @@ class ReportTests(unittest.TestCase):
             "Doribelove", include_own=True, state_filter="merged")["pull_requests"]], [1, 4])
         self.assertEqual(report.collect_report("Doribelove", state_filter="open")["counts"]["draft"], 1)
         self.assertEqual(report.collect_report("Doribelove", state_filter="closed")["counts"]["closed_unmerged"], 1)
+
+    @patch("contribution_report.subprocess.run")
+    def test_repository_filter_narrows_search_and_report_scope(self, run):
+        run.return_value = response([pr(owner="pydata", repo="sparse", state="MERGED")])
+        result = report.collect_report("Doribelove", repository="pydata/sparse")
+        search = json.loads(run.call_args.kwargs["input"])["variables"]["search"]
+        self.assertEqual(search, "is:pr is:public author:Doribelove repo:pydata/sparse sort:updated-desc")
+        self.assertEqual(result["public_authored_total"], 1)
+        self.assertEqual(result["counts"]["merged"], 1)
+        self.assertIn("repository: pydata/sparse", result["scope"])
+
+        run.return_value = response([pr(owner="Doribelove", repo="github-contribution-report")])
+        own = report.collect_report("Doribelove", repository="Doribelove/github-contribution-report")
+        self.assertEqual(own["public_authored_total"], 1)
+        self.assertEqual(own["own_repository_total"], 1)
+        self.assertEqual(own["counts"]["total"], 0)
+        self.assertEqual(report.collect_report("Doribelove", include_own=True,
+                                               repository="Doribelove/github-contribution-report")["counts"]["total"], 1)
 
     @patch("contribution_report.subprocess.run", return_value=response([]))
     def test_empty_result_is_successful_report(self, run):
@@ -152,6 +170,16 @@ class ReportTests(unittest.TestCase):
             with self.subTest(username=username):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     report.collect_report(username)
+        run.assert_not_called()
+
+    @patch("contribution_report.subprocess.run")
+    def test_invalid_repository_never_reaches_subprocess(self, run):
+        for repository in ["", "pydata", "pydata/", "-pydata/sparse", "pydata/..",
+                           "pydata/sparse is:private", "https://github.com/pydata/sparse",
+                           "pydata/sparse/extra", "pydata/$(id)"]:
+            with self.subTest(repository=repository):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    report.collect_report("Doribelove", repository=repository)
         run.assert_not_called()
 
     @patch("contribution_report.subprocess.run")

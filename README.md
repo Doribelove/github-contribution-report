@@ -24,6 +24,8 @@ python3 contribution_report.py Doribelove --format json > contributions.json
 python3 contribution_report.py Doribelove --include-own > contributions.md
 python3 contribution_report.py Doribelove --state open
 python3 contribution_report.py Doribelove --state merged
+python3 contribution_report.py Doribelove --repo pydata/sparse
+python3 contribution_report.py Doribelove --repo Doribelove/github-contribution-report --include-own
 python3 contribution_report.py Doribelove --gh /path/to/gh
 ```
 
@@ -43,6 +45,11 @@ Destination repositories that are forks retain an explicit `isFork` field.
   closed without merge. The `public_authored_total` and `own_repository_total`
   fields still describe all fetched PRs, before either state or ownership
   filtering. A filter with no matches produces an empty report.
+- `--repo OWNER/NAME` limits the API search to one destination repository.
+  `public_authored_total` and `own_repository_total` then describe that
+  repository's search results, before state or ownership filtering. The normal
+  external-only default still applies, so use `--include-own` for a repository
+  owned by the author.
 - Each PR includes its URL, title, number, state, draft status, merge/update times,
   review decision, repository ownership, and fork status.
 - Public authored PR totals and own-repository totals describe all fetched PRs;
@@ -53,9 +60,10 @@ Destination repositories that are forks retain an explicit `isFork` field.
 The tool uses the [GitHub GraphQL search API](https://docs.github.com/en/graphql/reference)
 through [`gh api graphql`](https://cli.github.com/manual/gh_api), requesting up to
 100 PRs per page. It follows cursors and checks that all reported search results
-were fetched. GitHub search exposes at most 1,000 results: accounts exceeding
-that limit cause an explicit error, not a misleading partial report. Changed
-counts, duplicate results, or stalled pagination also fail with a retry message.
+were fetched. GitHub search exposes at most 1,000 results for the selected
+query: larger result sets cause an explicit error, not a misleading partial
+report. `--repo` can narrow that search. Changed counts, duplicate results, or
+stalled pagination also fail with a retry message.
 Pagination is not a transactional snapshot; PR metadata can change during a run.
 
 ## Data handling
@@ -77,8 +85,8 @@ python3 -m unittest -v
 ```
 
 Tests mock GitHub CLI transport and cover pagination, the search cap, empty
-results, incomplete results, own-repository filtering, state counts, API failures,
-input validation, and Markdown escaping.
+results, incomplete results, repository and ownership filtering, state counts,
+API failures, input validation, and Markdown escaping.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.
