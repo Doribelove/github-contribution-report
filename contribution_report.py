@@ -62,7 +62,7 @@ def fetch_page(gh, search, cursor):
     try:
         result = subprocess.run(
             [gh, "api", "graphql", "--hostname", "github.com", "--input", "-"],
-            input=json.dumps(request), text=True, capture_output=True,
+            input=json.dumps(request).encode("utf-8"), capture_output=True,
             timeout=60, check=False,
         )
     except subprocess.TimeoutExpired as exc:

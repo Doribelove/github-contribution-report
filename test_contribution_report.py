@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -28,6 +29,23 @@ def response(nodes, count=None, more=False, cursor=None):
 
 
 class ReportTests(unittest.TestCase):
+    def test_utf8_pr_titles_on_non_utf8_hosts(self):
+        title = "修复缓存 🚀"
+        payload = json.loads(response([pr(title=title)]).stdout)
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        # Substitute a local process that writes the same UTF-8 bytes as gh.
+        command = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write({data!r})"]
+        run_process = subprocess.run
+
+        def run_gh(args, **kwargs):
+            if kwargs.get("text") and not kwargs.get("encoding"):
+                kwargs["encoding"] = "cp1252"
+            return run_process(command, **kwargs)
+
+        with patch("contribution_report.subprocess.run", side_effect=run_gh):
+            result = report.collect_report("Doribelove")
+        self.assertEqual(result["pull_requests"][0]["title"], title)
+
     @patch("contribution_report.subprocess.run")
     def test_pagination_uses_cursor_and_fixed_public_host(self, run):
         run.side_effect = [response([pr(1)], 2, True, "cursor-1"), response([pr(2)], 2)]
