@@ -24,6 +24,8 @@ python3 contribution_report.py Doribelove --format json > contributions.json
 python3 contribution_report.py Doribelove --include-own > contributions.md
 python3 contribution_report.py Doribelove --state open
 python3 contribution_report.py Doribelove --state merged
+python3 contribution_report.py Doribelove --updated-since 2026-11-01
+python3 contribution_report.py Doribelove --updated-since 2026-11-01 --state open
 python3 contribution_report.py Doribelove --repo pydata/sparse
 python3 contribution_report.py Doribelove --repo Doribelove/github-contribution-report --include-own
 python3 contribution_report.py Doribelove --gh /path/to/gh
@@ -57,13 +59,29 @@ Destination repositories that are forks retain an explicit `isFork` field.
 - An empty search produces an empty report. It does not verify that the username
   exists. GitHub search indexing may lag behind a recent change.
 
+### Recent activity
+
+`--updated-since YYYY-MM-DD` searches for PRs whose last update is at or after
+00:00:00 UTC on that date, including the boundary. It uses GitHub's
+[`updated` search qualifier](https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests#search-by-when-an-issue-or-pull-request-was-created-or-last-updated)
+before pagination, and can be combined with `--repo`, `--state` and `--include-own`.
+Invalid calendar dates, timestamps and query fragments are rejected before any
+API request. Omitting the option preserves the full-history search.
+
+The scope and all totals describe the date-limited search: they are not lifetime
+totals. This selects recently updated PRs, not individual activity events or only
+PRs merged during the period. For example, an older merged PR with a recent
+comment may appear with `--state merged`. The report shows the current state;
+it does not reconstruct the state at the selected date. Dates use UTC rather
+than your computer's local time zone.
+
 The tool uses the [GitHub GraphQL search API](https://docs.github.com/en/graphql/reference)
 through [`gh api graphql`](https://cli.github.com/manual/gh_api), requesting up to
 100 PRs per page. It follows cursors and checks that all reported search results
 were fetched. GitHub search exposes at most 1,000 results for the selected
 query: larger result sets cause an explicit error, not a misleading partial
-report. `--repo` can narrow that search. Changed counts, duplicate results, or
-stalled pagination also fail with a retry message.
+report. `--repo` or `--updated-since` can narrow that search. Changed counts,
+duplicate results, or stalled pagination also fail with a retry message.
 Pagination is not a transactional snapshot; PR metadata can change during a run.
 
 ## Data handling
@@ -86,7 +104,7 @@ python3 -m unittest -v
 
 Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
-API failures, input validation, and Markdown escaping.
+API failures, input validation, date-filter combinations and Markdown escaping.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.

@@ -2,7 +2,7 @@
 """Report public authored GitHub pull requests using authenticated GitHub CLI."""
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import html
 import json
 import re
@@ -54,6 +54,17 @@ def valid_repository(value):
         raise argparse.ArgumentTypeError("expected a repository as OWNER/NAME") from exc
     if not 1 <= len(name) <= 100 or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."}:
         raise argparse.ArgumentTypeError("expected a repository as OWNER/NAME")
+    return value
+
+
+def valid_date(value):
+    """Accept a calendar date without search qualifiers or implicit time zones."""
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        raise argparse.ArgumentTypeError("expected a valid date as YYYY-MM-DD")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a valid date as YYYY-MM-DD") from exc
     return value
 
 
@@ -125,15 +136,20 @@ def validate_pr(pr):
         raise ReportError("GitHub returned an incomplete or unexpected pull request") from exc
 
 
-def collect_report(username, gh="gh", include_own=False, state_filter=None, repository=None):
+def collect_report(username, gh="gh", include_own=False, state_filter=None, repository=None,
+                   updated_since=None):
     username = valid_username(username)
     if state_filter is not None and state_filter not in STATE_FILTERS:
         raise ValueError("state_filter must be open, merged, or closed")
     if repository is not None:
         repository = valid_repository(repository)
+    if updated_since is not None:
+        updated_since = valid_date(updated_since)
     search = f"is:pr is:public author:{username}"
     if repository:
         search += f" repo:{repository}"
+    if updated_since:
+        search += f" updated:>={updated_since}T00:00:00+00:00"
     search += " sort:updated-desc"
     prs, seen_urls, seen_cursors = [], set(), set()
     cursor, expected_count = None, None
@@ -180,6 +196,7 @@ def collect_report(username, gh="gh", include_own=False, state_filter=None, repo
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": ("public, including own repositories" if include_own else "public, external repositories")
         + (f"; repository: {repository}" if repository else "")
+        + (f"; updated since: {updated_since} (inclusive, UTC)" if updated_since else "")
         + (f"; state: {state_filter}" if state_filter else ""),
         "search_query": search,
         "public_authored_total": len(prs),
@@ -227,11 +244,14 @@ def main(argv=None):
     parser.add_argument("--gh", default="gh", help="GitHub CLI executable (default: gh)")
     parser.add_argument("--include-own", action="store_true", help="include PRs to repositories owned by the author")
     parser.add_argument("--repo", type=valid_repository, help="limit search to one repository (OWNER/NAME)")
+    parser.add_argument("--updated-since", type=valid_date, metavar="YYYY-MM-DD",
+                        help="search PRs last updated on or after this date at midnight UTC")
     parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     args = parser.parse_args(argv)
     try:
-        report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo)
+        report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo,
+                                updated_since=args.updated_since)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

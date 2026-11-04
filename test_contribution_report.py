@@ -117,6 +117,74 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report.collect_report("Doribelove", include_own=True,
                                                repository="Doribelove/github-contribution-report")["counts"]["total"], 1)
 
+    @patch("contribution_report.subprocess.run")
+    def test_updated_since_survives_pagination_and_preserves_scope_counts(self, run):
+        run.side_effect = [
+            response([pr(1, state="MERGED"), pr(2, owner="Doribelove")], 3, True, "next"),
+            response([pr(3)], 3),
+        ]
+        result = report.collect_report("Doribelove", state_filter="merged", updated_since="2026-09-15")
+        self.assertEqual(result["public_authored_total"], 3)
+        self.assertEqual(result["own_repository_total"], 1)
+        self.assertEqual(result["counts"], {"total": 1, "merged": 1, "open": 0,
+                                             "closed_unmerged": 0, "draft": 0})
+        self.assertEqual([item["number"] for item in result["pull_requests"]], [1])
+        for call in run.call_args_list:
+            variables = json.loads(call.kwargs["input"])["variables"]
+            self.assertEqual(variables["search"],
+                             "is:pr is:public author:Doribelove updated:>=2026-09-15T00:00:00+00:00 sort:updated-desc")
+        self.assertEqual(json.loads(run.call_args.kwargs["input"])["variables"]["after"], "next")
+        self.assertIn("updated since: 2026-09-15 (inclusive, UTC)", report.to_markdown(result))
+
+    @patch("contribution_report.subprocess.run")
+    def test_updated_since_combines_with_repository_and_cli_options(self, run):
+        run.return_value = response([pr(owner="Doribelove", repo="project", state="MERGED")])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = report.main(["Doribelove", "--updated-since", "2026-09-15",
+                                "--repo", "Doribelove/project", "--state", "merged",
+                                "--include-own", "--format", "json"])
+        self.assertEqual(code, 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["counts"]["merged"], 1)
+        self.assertEqual(result["own_repository_total"], 1)
+        self.assertIn("repository: Doribelove/project", result["scope"])
+        self.assertIn("updated since: 2026-09-15 (inclusive, UTC)", result["scope"])
+        self.assertEqual(json.loads(run.call_args.kwargs["input"])["variables"]["search"],
+                         "is:pr is:public author:Doribelove repo:Doribelove/project updated:>=2026-09-15T00:00:00+00:00 sort:updated-desc")
+
+    @patch("contribution_report.subprocess.run", return_value=response([]))
+    def test_updated_since_empty_search_is_valid(self, run):
+        result = report.collect_report("Doribelove", updated_since="2099-01-01")
+        self.assertEqual(result["public_authored_total"], 0)
+        self.assertEqual(result["counts"]["total"], 0)
+        self.assertIn("No matching public pull requests.", report.to_markdown(result))
+
+    def test_valid_dates_include_leap_days(self):
+        for value in ["2024-02-29", "2000-02-29", "2026-12-31"]:
+            with self.subTest(value=value):
+                self.assertEqual(report.valid_date(value), value)
+
+    @patch("contribution_report.subprocess.run")
+    def test_invalid_dates_never_reach_subprocess(self, run):
+        for value in ["", "2026-02-29", "1900-02-29", "2026-04-31", "2026-13-01",
+                      "0000-01-01", "2026-1-01", "20260101", "2026-W01-1",
+                      "2026-11-01T00:00:00Z", "2026-11-01 is:private", " 2026-11-01"]:
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    report.collect_report("Doribelove", updated_since=value)
+        run.assert_not_called()
+
+    @patch("contribution_report.subprocess.run")
+    def test_invalid_cli_date_returns_argument_error_without_output(self, run):
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors), self.assertRaises(SystemExit) as error:
+            report.main(["Doribelove", "--updated-since", "2026-02-29"])
+        self.assertEqual(error.exception.code, 2)
+        self.assertEqual(output.getvalue(), "")
+        self.assertIn("expected a valid date as YYYY-MM-DD", errors.getvalue())
+        run.assert_not_called()
+
     @patch("contribution_report.subprocess.run", return_value=response([]))
     def test_empty_result_is_successful_report(self, run):
         result = report.collect_report("no-matches")
