@@ -8,7 +8,7 @@ maintained portfolio.
 
 See a [real public contribution report](examples/Doribelove-2026-09-23.md)
 generated on September 23, 2026. This is a dated snapshot; run the command
-above to check current pull request states.
+below to check current pull request states.
 
 ## Requirements and setup
 
@@ -37,6 +37,18 @@ and labels them `own`. Ownership comparison is case-insensitive. Organization
 membership and project independence are not inferred: a repository owned by an
 organization is categorized as `external`, even if the author belongs to it.
 Destination repositories that are forks retain an explicit `isFork` field.
+
+### Windows UTF-8 export
+
+In Windows Command Prompt (`cmd.exe`), enable Python's UTF-8 mode to preserve
+Chinese characters and emoji when exporting a report:
+
+```bat
+python -X utf8 contribution_report.py Doribelove --format json > contributions.json
+python -X utf8 contribution_report.py Doribelove > contributions.md
+```
+
+The `-X utf8` option sets Python's redirected report output to UTF-8.
 
 ## What the report means
 
@@ -104,7 +116,8 @@ python3 -m unittest -v
 
 Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
-API failures, input validation, date-filter combinations and Markdown escaping.
+API failures, input validation, date-filter combinations, Unicode titles across
+system locales, and Markdown escaping.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.
