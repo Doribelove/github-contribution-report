@@ -279,6 +279,28 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len([line for line in output.splitlines() if line.startswith("| ")]), 3)
 
     @patch("contribution_report.subprocess.run")
+    def test_markdown_titles_preserve_literal_strikethrough_markers(self, run):
+        cases = [
+            ("Keep ~~literal~~ text", r"Keep \~\~literal\~\~ text"),
+            ("Use ~alias~ literally", r"Use \~alias\~ literally"),
+            (r"Preserve \~~marker~~", r"Preserve \\\~\~marker\~\~"),
+        ]
+        for title, escaped in cases:
+            with self.subTest(title=title):
+                run.return_value = response([pr(title=title)])
+                output = report.to_markdown(report.collect_report("Doribelove"))
+                self.assertIn(f"| {escaped} | OPEN |", output)
+
+    @patch("contribution_report.subprocess.run")
+    def test_cli_json_preserves_literal_strikethrough_markers(self, run):
+        title = r"Keep ~~literal~~ and ~alias~ plus \~~marker~~"
+        run.return_value = response([pr(title=title)])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(report.main(["Doribelove", "--format", "json"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["pull_requests"][0]["title"], title)
+
+    @patch("contribution_report.subprocess.run")
     def test_noncanonical_or_unsafe_links_are_rejected(self, run):
         for url in ["javascript:alert(1)", "https://evil.test/upstream/project/pull/1", "https://github.com/upstream/project/pull/1?x=y"]:
             node = pr()

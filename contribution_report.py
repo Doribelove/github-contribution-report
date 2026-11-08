@@ -209,7 +209,7 @@ def collect_report(username, gh="gh", include_own=False, state_filter=None, repo
 def markdown_text(value):
     text = html.escape(str(value), quote=False)
     text = " ".join(text.split())
-    return re.sub(r"([\\`*{}_\[\]()|])", r"\\\1", text)
+    return re.sub(r"([\\`*{}_\[\]()|~])", r"\\\1", text)
 
 
 def to_markdown(report):
