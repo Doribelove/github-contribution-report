@@ -238,6 +238,16 @@ def to_markdown(report):
     return "\n".join(lines) + "\n"
 
 
+def write_output(text):
+    """Write UTF-8 bytes when stdout is a real stream, including redirection."""
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is not None:
+        buffer.write(text.encode("utf-8"))
+    else:
+        # Text-only streams, such as StringIO, already preserve Unicode.
+        sys.stdout.write(text)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("username", type=valid_username)
@@ -256,7 +266,7 @@ def main(argv=None):
         print(f"error: {exc}", file=sys.stderr)
         return 1
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if args.format == "json" else to_markdown(report)
-    sys.stdout.write(output)
+    write_output(output)
     return 0
 
 

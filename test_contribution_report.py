@@ -2,6 +2,7 @@ import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -29,6 +30,28 @@ def response(nodes, count=None, more=False, cursor=None):
 
 
 class ReportTests(unittest.TestCase):
+    def test_cli_exports_utf8_with_legacy_stdout_encoding(self):
+        title = "修复导航 🚀"
+        page = json.loads(response([pr(title=title)]).stdout)["data"]["search"]
+        for encoding in ["ascii", "cp1252"]:
+            for output_format in ["json", "markdown"]:
+                with self.subTest(encoding=encoding, format=output_format):
+                    script = (
+                        "from unittest.mock import patch\n"
+                        "import contribution_report as report\n"
+                        f"with patch('contribution_report.fetch_page', return_value={page!r}):\n"
+                        f"    raise SystemExit(report.main(['Doribelove', '--format', {output_format!r}]))\n"
+                    )
+                    result = subprocess.run(
+                        [sys.executable, "-c", script], capture_output=True,
+                        env=dict(os.environ, PYTHONIOENCODING=encoding), check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+                    output = result.stdout.decode("utf-8")
+                    self.assertIn(title, output)
+                    if output_format == "json":
+                        self.assertEqual(json.loads(output)["pull_requests"][0]["title"], title)
+
     def test_utf8_pr_titles_on_non_utf8_hosts(self):
         title = "修复缓存 🚀"
         payload = json.loads(response([pr(title=title)]).stdout)

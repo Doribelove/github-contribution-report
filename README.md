@@ -38,17 +38,20 @@ membership and project independence are not inferred: a repository owned by an
 organization is categorized as `external`, even if the author belongs to it.
 Destination repositories that are forks retain an explicit `isFork` field.
 
-### Windows UTF-8 export
+### UTF-8 export
 
-In Windows Command Prompt (`cmd.exe`), enable Python's UTF-8 mode to preserve
-Chinese characters and emoji when exporting a report:
+Reports written to stdout use UTF-8, including redirected output on systems
+with a legacy locale. Chinese characters and emoji are preserved without
+changing Python's encoding settings. For example, in Windows Command Prompt
+(`cmd.exe`):
 
 ```bat
-python -X utf8 contribution_report.py Doribelove --format json > contributions.json
-python -X utf8 contribution_report.py Doribelove > contributions.md
+python contribution_report.py Doribelove --format json > contributions.json
+python contribution_report.py Doribelove > contributions.md
 ```
 
-The `-X utf8` option sets Python's redirected report output to UTF-8.
+Open the exported files as UTF-8 in your editor. An interactive terminal also
+needs a font and encoding that can display the reported characters.
 
 ## What the report means
 
