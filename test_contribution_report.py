@@ -189,6 +189,74 @@ class ReportTests(unittest.TestCase):
                 self.assertEqual(report.valid_date(value), value)
 
     @patch("contribution_report.subprocess.run")
+    def test_merge_window_is_applied_to_every_search_page(self, run):
+        run.side_effect = [
+            response([pr(1, state="MERGED")], 2, True, "next"),
+            response([pr(2, owner="Doribelove", state="MERGED")], 2),
+        ]
+        result = report.collect_report("Doribelove", merged_since="2026-09-01",
+                                       merged_before="2026-10-01")
+        self.assertEqual(result["counts"]["merged"], 1)
+        self.assertEqual(result["public_authored_total"], 2)
+        self.assertEqual(result["own_repository_total"], 1)
+        for call in run.call_args_list:
+            self.assertEqual(json.loads(call.kwargs["input"])["variables"]["search"],
+                             "is:pr is:public author:Doribelove is:merged "
+                             "merged:2026-09-01..2026-09-30 sort:updated-desc")
+        self.assertIn("merged since: 2026-09-01 (inclusive, UTC)", result["scope"])
+        self.assertIn("merged before: 2026-10-01 (exclusive, UTC)", result["scope"])
+
+    @patch("contribution_report.subprocess.run", return_value=response([]))
+    def test_cli_merge_window_combines_with_other_filters(self, run):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(report.main([
+                "Doribelove", "--repo", "pydata/sparse", "--include-own",
+                "--updated-since", "2026-11-01", "--merged-since", "2026-11-13",
+                "--merged-before", "2026-11-14", "--state", "merged", "--format", "json",
+            ]), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["counts"]["total"], 0)
+        self.assertEqual(result["search_query"],
+                         "is:pr is:public author:Doribelove repo:pydata/sparse "
+                         "updated:>=2026-11-01T00:00:00+00:00 is:merged "
+                         "merged:2026-11-13..2026-11-13 sort:updated-desc")
+
+    @patch("contribution_report.subprocess.run", return_value=response([]))
+    def test_merge_window_upper_boundary_handles_leap_days(self, run):
+        result = report.collect_report("Doribelove", merged_since="2024-02-01",
+                                       merged_before="2024-03-01")
+        self.assertIn("merged:2024-02-01..2024-02-29", result["search_query"])
+        self.assertEqual(sum(word.startswith("merged:") for word in result["search_query"].split()), 1)
+
+    @patch("contribution_report.subprocess.run", return_value=response([]))
+    def test_one_sided_merge_windows(self, run):
+        for option, token in [("merged_since", ">="), ("merged_before", "<")]:
+            result = report.collect_report("Doribelove", **{option: "2026-11-01"})
+            self.assertIn(f"is:merged merged:{token}2026-11-01T00:00:00+00:00", result["search_query"])
+
+    @patch("contribution_report.subprocess.run")
+    def test_invalid_merge_windows_fail_before_api_call(self, run):
+        for options in [
+            {"merged_since": "2026-11-01", "merged_before": "2026-11-01"},
+            {"merged_since": "2026-11-02", "merged_before": "2026-11-01"},
+            {"merged_since": "2026-11-01", "state_filter": "open"},
+            {"merged_before": "2026-11-01", "state_filter": "closed"},
+        ]:
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                report.collect_report("Doribelove", **options)
+        for option in ["merged_since", "merged_before"]:
+            with self.assertRaises(argparse.ArgumentTypeError):
+                report.collect_report("Doribelove", **{option: "2026-02-29"})
+        with redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+            with self.assertRaises(SystemExit) as result:
+                report.main(["Doribelove", "--merged-since", "2026-11-01", "--state", "open"])
+        self.assertEqual(result.exception.code, 2)
+        self.assertEqual(output.getvalue(), "")
+        self.assertIn("merge-date filters require", errors.getvalue())
+        run.assert_not_called()
+
+    @patch("contribution_report.subprocess.run")
     def test_invalid_dates_never_reach_subprocess(self, run):
         for value in ["", "2026-02-29", "1900-02-29", "2026-04-31", "2026-13-01",
                       "0000-01-01", "2026-1-01", "20260101", "2026-W01-1",

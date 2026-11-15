@@ -26,6 +26,7 @@ python3 contribution_report.py Doribelove --state open
 python3 contribution_report.py Doribelove --state merged
 python3 contribution_report.py Doribelove --updated-since 2026-11-01
 python3 contribution_report.py Doribelove --updated-since 2026-11-01 --state open
+python3 contribution_report.py Doribelove --merged-since 2026-11-01 --merged-before 2026-12-01
 python3 contribution_report.py Doribelove --repo pydata/sparse
 python3 contribution_report.py Doribelove --repo Doribelove/github-contribution-report --include-own
 python3 contribution_report.py Doribelove --gh /path/to/gh
@@ -90,12 +91,26 @@ comment may appear with `--state merged`. The report shows the current state;
 it does not reconstruct the state at the selected date. Dates use UTC rather
 than your computer's local time zone.
 
+### Merges during a reporting period
+
+Use `--merged-since YYYY-MM-DD` and `--merged-before YYYY-MM-DD` to report PRs
+by their merge date. The start includes midnight UTC; the end excludes midnight
+UTC. For example, the November command above selects merges from November 1
+through November 30. Either boundary can be used on its own.
+
+These options use GitHub's [`merged` search qualifier](https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests#search-by-when-a-pull-request-was-merged)
+before pagination, so totals describe the selected merge period. Older merges
+with recent comments stay outside that period. Repository, ownership and update
+filters can be combined with it; `--state open` and `--state closed` are rejected
+because they cannot match a merge period. The report is still a current snapshot
+and GitHub search indexing can lag behind a merge.
+
 The tool uses the [GitHub GraphQL search API](https://docs.github.com/en/graphql/reference)
 through [`gh api graphql`](https://cli.github.com/manual/gh_api), requesting up to
 100 PRs per page. It follows cursors and checks that all reported search results
 were fetched. GitHub search exposes at most 1,000 results for the selected
 query: larger result sets cause an explicit error, not a misleading partial
-report. `--repo` or `--updated-since` can narrow that search. Changed counts,
+report. Repository, update-date or merge-date filters can narrow that search. Changed counts,
 duplicate results, or stalled pagination also fail with a retry message.
 Pagination is not a transactional snapshot; PR metadata can change during a run.
 

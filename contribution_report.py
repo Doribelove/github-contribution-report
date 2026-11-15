@@ -2,7 +2,7 @@
 """Report public authored GitHub pull requests using authenticated GitHub CLI."""
 
 import argparse
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import html
 import json
 import re
@@ -137,7 +137,7 @@ def validate_pr(pr):
 
 
 def collect_report(username, gh="gh", include_own=False, state_filter=None, repository=None,
-                   updated_since=None):
+                   updated_since=None, merged_since=None, merged_before=None):
     username = valid_username(username)
     if state_filter is not None and state_filter not in STATE_FILTERS:
         raise ValueError("state_filter must be open, merged, or closed")
@@ -145,11 +145,32 @@ def collect_report(username, gh="gh", include_own=False, state_filter=None, repo
         repository = valid_repository(repository)
     if updated_since is not None:
         updated_since = valid_date(updated_since)
+    if merged_since is not None:
+        merged_since = valid_date(merged_since)
+    if merged_before is not None:
+        merged_before = valid_date(merged_before)
+    if merged_since or merged_before:
+        if state_filter not in (None, "merged"):
+            raise ValueError("merge-date filters require --state merged or no --state")
+        if merged_since and merged_before and merged_since >= merged_before:
+            raise ValueError("--merged-before must be later than --merged-since")
     search = f"is:pr is:public author:{username}"
     if repository:
         search += f" repo:{repository}"
     if updated_since:
         search += f" updated:>={updated_since}T00:00:00+00:00"
+    if merged_since or merged_before:
+        search += " is:merged"
+    if merged_since and merged_before:
+        # Repeating the same date qualifier can discard one boundary in search.
+        # GitHub date ranges include both whole UTC dates, so use the previous
+        # calendar day for our exclusive upper boundary.
+        last_day = date.fromisoformat(merged_before) - timedelta(days=1)
+        search += f" merged:{merged_since}..{last_day.isoformat()}"
+    elif merged_since:
+        search += f" merged:>={merged_since}T00:00:00+00:00"
+    elif merged_before:
+        search += f" merged:<{merged_before}T00:00:00+00:00"
     search += " sort:updated-desc"
     prs, seen_urls, seen_cursors = [], set(), set()
     cursor, expected_count = None, None
@@ -197,6 +218,8 @@ def collect_report(username, gh="gh", include_own=False, state_filter=None, repo
         "scope": ("public, including own repositories" if include_own else "public, external repositories")
         + (f"; repository: {repository}" if repository else "")
         + (f"; updated since: {updated_since} (inclusive, UTC)" if updated_since else "")
+        + (f"; merged since: {merged_since} (inclusive, UTC)" if merged_since else "")
+        + (f"; merged before: {merged_before} (exclusive, UTC)" if merged_before else "")
         + (f"; state: {state_filter}" if state_filter else ""),
         "search_query": search,
         "public_authored_total": len(prs),
@@ -256,12 +279,19 @@ def main(argv=None):
     parser.add_argument("--repo", type=valid_repository, help="limit search to one repository (OWNER/NAME)")
     parser.add_argument("--updated-since", type=valid_date, metavar="YYYY-MM-DD",
                         help="search PRs last updated on or after this date at midnight UTC")
+    parser.add_argument("--merged-since", type=valid_date, metavar="YYYY-MM-DD",
+                        help="search PRs merged on or after this date at midnight UTC")
+    parser.add_argument("--merged-before", type=valid_date, metavar="YYYY-MM-DD",
+                        help="search PRs merged before this date at midnight UTC (exclusive)")
     parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     args = parser.parse_args(argv)
     try:
         report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo,
-                                updated_since=args.updated_since)
+                                updated_since=args.updated_since, merged_since=args.merged_since,
+                                merged_before=args.merged_before)
+    except ValueError as exc:
+        parser.error(str(exc))
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
