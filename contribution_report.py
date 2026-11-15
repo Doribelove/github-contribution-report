@@ -2,8 +2,10 @@
 """Report public authored GitHub pull requests using authenticated GitHub CLI."""
 
 import argparse
+import csv
 from datetime import date, datetime, timedelta, timezone
 import html
+import io
 import json
 import re
 import subprocess
@@ -261,6 +263,30 @@ def to_markdown(report):
     return "\n".join(lines) + "\n"
 
 
+def spreadsheet_text(value):
+    """Keep formula-like metadata as text when a CSV is opened in a spreadsheet."""
+    text = str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@")) or text.startswith(("\t", "\r", "\n")):
+        return "'" + text
+    return text
+
+
+def to_csv(report):
+    """Export selected PRs as UTF-8-compatible, consistently ordered CSV rows."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["repository", "number", "title", "url", "state", "is_draft",
+                     "review_decision", "relationship", "destination_is_fork",
+                     "updated_at", "merged_at"])
+    for pr in report["pull_requests"]:
+        values = [pr["repository"]["nameWithOwner"], pr["number"], pr["title"], pr["url"],
+                  pr["state"], str(pr["isDraft"]).lower(), pr["reviewDecision"] or "",
+                  pr["relationship"], str(pr["repository"]["isFork"]).lower(),
+                  pr["updatedAt"], pr["mergedAt"] or ""]
+        writer.writerow([spreadsheet_text(value) for value in values])
+    return output.getvalue()
+
+
 def write_output(text):
     """Write UTF-8 bytes when stdout is a real stream, including redirection."""
     buffer = getattr(sys.stdout, "buffer", None)
@@ -284,7 +310,7 @@ def main(argv=None):
     parser.add_argument("--merged-before", type=valid_date, metavar="YYYY-MM-DD",
                         help="search PRs merged before this date at midnight UTC (exclusive)")
     parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
-    parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    parser.add_argument("--format", choices=("markdown", "json", "csv"), default="markdown")
     args = parser.parse_args(argv)
     try:
         report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo,
@@ -295,7 +321,12 @@ def main(argv=None):
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    output = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if args.format == "json" else to_markdown(report)
+    if args.format == "json":
+        output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    elif args.format == "csv":
+        output = to_csv(report)
+    else:
+        output = to_markdown(report)
     write_output(output)
     return 0
 

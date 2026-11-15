@@ -3,7 +3,7 @@
 A small command-line GitHub API integration that reports a developer's public
 authored pull requests. It answers a recurring contribution-tracking question:
 which changes were merged, which remain open, and which were closed without merge?
-Reports are printed as Markdown or JSON for use in local records or a manually
+Reports are printed as Markdown, JSON or CSV for use in local records or a manually
 maintained portfolio.
 
 See a [real public contribution report](examples/Doribelove-2026-09-23.md)
@@ -21,6 +21,7 @@ Clone this repository, then run the script from its directory:
 ```sh
 python3 contribution_report.py Doribelove
 python3 contribution_report.py Doribelove --format json > contributions.json
+python3 contribution_report.py Doribelove --format csv > contributions.csv
 python3 contribution_report.py Doribelove --include-own > contributions.md
 python3 contribution_report.py Doribelove --state open
 python3 contribution_report.py Doribelove --state merged
@@ -53,6 +54,19 @@ python contribution_report.py Doribelove > contributions.md
 
 Open the exported files as UTF-8 in your editor. An interactive terminal also
 needs a font and encoding that can display the reported characters.
+
+### Spreadsheet export
+
+`--format csv` writes one row per selected PR with stable column names, including
+repository, number, title, URL, state, draft/review status, ownership relationship,
+fork status and timestamps. All report filters apply. An empty selection writes
+the header only; API errors write no CSV. Import the file as UTF-8 in your
+spreadsheet application.
+
+Commas, quotes and embedded newlines are quoted using standard CSV rules.
+Formula-like cells are prefixed with an apostrophe so spreadsheet applications
+treat titles as text. Use JSON when you need the exact original metadata and
+the report's scope, generation time and summary counts.
 
 ## What the report means
 

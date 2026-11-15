@@ -1,4 +1,5 @@
 import argparse
+import csv
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
@@ -34,7 +35,7 @@ class ReportTests(unittest.TestCase):
         title = "修复导航 🚀"
         page = json.loads(response([pr(title=title)]).stdout)["data"]["search"]
         for encoding in ["ascii", "cp1252"]:
-            for output_format in ["json", "markdown"]:
+            for output_format in ["json", "markdown", "csv"]:
                 with self.subTest(encoding=encoding, format=output_format):
                     script = (
                         "from unittest.mock import patch\n"
@@ -406,6 +407,55 @@ class ReportTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(report.main(["Doribelove", "--format", "json"]), 0)
         self.assertEqual(json.loads(output.getvalue())["counts"]["open"], 1)
+
+    @patch("contribution_report.subprocess.run")
+    def test_csv_quotes_and_preserves_metadata(self, run):
+        title = '修复 "navigation", then\nrun tests 🚀'
+        node = pr(title=title, state="MERGED")
+        node["reviewDecision"] = "APPROVED"
+        node["repository"]["isFork"] = True
+        run.return_value = response([node, pr(2, owner="Doribelove")])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(report.main(["Doribelove", "--format", "csv"]), 0)
+        rows = list(csv.DictReader(io.StringIO(output.getvalue(), newline="")))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0], {
+            "repository": "upstream/project", "number": "1", "title": title,
+            "url": node["url"], "state": "MERGED", "is_draft": "false",
+            "review_decision": "APPROVED", "relationship": "external",
+            "destination_is_fork": "true", "updated_at": node["updatedAt"],
+            "merged_at": node["mergedAt"],
+        })
+
+    @patch("contribution_report.subprocess.run")
+    def test_csv_formula_like_titles_are_exported_as_text(self, run):
+        titles = ["=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(1)", "  =1", "\tvalue",
+                  "\rvalue", "\nvalue", "\u2003=1"]
+        run.return_value = response([pr(n, title=title) for n, title in enumerate(titles, 1)])
+        snapshot = report.collect_report("Doribelove")
+        rows = list(csv.DictReader(io.StringIO(report.to_csv(snapshot), newline="")))
+        self.assertEqual([r["title"] for r in rows], ["'" + title for title in titles])
+        self.assertEqual([r["title"] for r in snapshot["pull_requests"]], titles)
+
+    @patch("contribution_report.subprocess.run", return_value=response([pr(draft=True)]))
+    def test_csv_empty_filter_has_header_and_no_rows(self, run):
+        snapshot = report.collect_report("Doribelove", state_filter="merged")
+        output = report.to_csv(snapshot)
+        reader = csv.DictReader(io.StringIO(output))
+        self.assertEqual(len(reader.fieldnames), 11)
+        self.assertEqual(list(reader), [])
+        draft = list(csv.DictReader(io.StringIO(report.to_csv(report.collect_report("Doribelove")))))[0]
+        self.assertEqual(draft["is_draft"], "true")
+        self.assertEqual(draft["review_decision"], "")
+        self.assertEqual(draft["merged_at"], "")
+
+    @patch("contribution_report.subprocess.run", return_value=response([], 1001))
+    def test_csv_api_failure_does_not_emit_header(self, run):
+        output = io.StringIO()
+        with redirect_stdout(output), redirect_stderr(io.StringIO()):
+            self.assertEqual(report.main(["Doribelove", "--format", "csv"]), 1)
+        self.assertEqual(output.getvalue(), "")
 
     @patch("contribution_report.subprocess.run", return_value=response([pr(state="OPEN")]))
     def test_cli_state_filter_can_return_an_empty_report(self, run):
