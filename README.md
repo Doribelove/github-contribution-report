@@ -68,6 +68,22 @@ Formula-like cells are prefixed with an apostrophe so spreadsheet applications
 treat titles as text. Use JSON when you need the exact original metadata and
 the report's scope, generation time and summary counts.
 
+### Compare saved snapshots
+
+Export two JSON reports with the same author and filters, then compare their
+PR membership, review decisions, draft status and merge state offline:
+
+```sh
+python3 compare_reports.py before.json after.json
+python3 compare_reports.py before.json after.json --format json > changes.json
+```
+
+The result separates added, removed, changed and unchanged PRs and preserves
+before/after values. A removed row means it is absent from the later snapshot;
+use full-history reports to observe merge transitions directly. See the
+[snapshot comparison guide](docs/snapshot-comparison.md) for export commands,
+matching filters and output details. Comparison needs no GitHub authentication.
+
 ## What the report means
 
 - `MERGED` counts as merged; `CLOSED` counts as closed without merge.
@@ -149,7 +165,8 @@ python3 -m unittest -v
 Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
 API failures, input validation, date-filter combinations, Unicode titles across
-system locales, and Markdown escaping.
+system locales, CSV quoting and spreadsheet text protection, snapshot validation
+and comparison, and Markdown escaping.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.
