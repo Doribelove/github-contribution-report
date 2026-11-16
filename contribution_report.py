@@ -7,9 +7,12 @@ from datetime import date, datetime, timedelta, timezone
 import html
 import io
 import json
+import os
+from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 from urllib.parse import urlsplit
 
 
@@ -287,8 +290,33 @@ def to_csv(report):
     return output.getvalue()
 
 
-def write_output(text):
-    """Write UTF-8 bytes when stdout is a real stream, including redirection."""
+def write_output(text, path=None):
+    """Write UTF-8 to stdout, or replace a file after its complete write succeeds."""
+    if path is not None:
+        temporary = None
+        try:
+            destination = Path(path)
+            if destination.is_symlink():
+                raise ReportError("output path is a symbolic link; choose a regular file")
+            data = text.encode("utf-8")
+            # A sibling temporary file keeps replacement on the same filesystem.
+            # Close it before replacing so this also works on Windows.
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=destination.parent, prefix=".contribution-report-",
+                suffix=".tmp", delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+            os.replace(temporary, destination)
+        except (OSError, UnicodeError) as exc:
+            raise ReportError("could not save output; check the destination directory and permissions") from exc
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError as exc:
+                    raise ReportError("could not remove temporary output file; check directory permissions") from exc
+        return
     buffer = getattr(sys.stdout, "buffer", None)
     if buffer is not None:
         buffer.write(text.encode("utf-8"))
@@ -311,6 +339,7 @@ def main(argv=None):
                         help="search PRs merged before this date at midnight UTC (exclusive)")
     parser.add_argument("--state", choices=STATE_FILTERS, help="show only open, merged, or closed-unmerged PRs")
     parser.add_argument("--format", choices=("markdown", "json", "csv"), default="markdown")
+    parser.add_argument("--output", metavar="PATH", help="save UTF-8 output, replacing the file only after success")
     args = parser.parse_args(argv)
     try:
         report = collect_report(args.username, args.gh, args.include_own, args.state, args.repo,
@@ -327,7 +356,11 @@ def main(argv=None):
         output = to_csv(report)
     else:
         output = to_markdown(report)
-    write_output(output)
+    try:
+        write_output(output, args.output)
+    except ReportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 

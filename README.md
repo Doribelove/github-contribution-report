@@ -5,8 +5,8 @@
 A small command-line GitHub API integration that reports a developer's public
 authored pull requests. It answers a recurring contribution-tracking question:
 which changes were merged, which remain open, and which were closed without merge?
-Reports are printed as Markdown, JSON or CSV for use in local records or a manually
-maintained portfolio.
+Reports are printed or saved as Markdown, JSON or CSV for use in local records
+or a manually maintained portfolio.
 
 See a [real public contribution report](examples/Doribelove-2026-09-23.md)
 generated on September 23, 2026. This is a dated snapshot; run the command
@@ -22,9 +22,9 @@ Clone this repository, then run the script from its directory:
 
 ```sh
 python3 contribution_report.py Doribelove
-python3 contribution_report.py Doribelove --format json > contributions.json
-python3 contribution_report.py Doribelove --format csv > contributions.csv
-python3 contribution_report.py Doribelove --include-own > contributions.md
+python3 contribution_report.py Doribelove --format json --output contributions.json
+python3 contribution_report.py Doribelove --format csv --output contributions.csv
+python3 contribution_report.py Doribelove --include-own --output contributions.md
 python3 contribution_report.py Doribelove --state open
 python3 contribution_report.py Doribelove --state merged
 python3 contribution_report.py Doribelove --updated-since 2026-11-01
@@ -42,16 +42,29 @@ membership and project independence are not inferred: a repository owned by an
 organization is categorized as `external`, even if the author belongs to it.
 Destination repositories that are forks retain an explicit `isFork` field.
 
+### Save reports safely
+
+Use `--output PATH` to save a report without clearing the previous file if an
+API request or export fails. Both scripts first generate the complete result,
+write UTF-8 to a temporary file in the destination directory, then replace the
+output file. Successful file exports leave stdout empty. Omitting `--output`
+continues to print the report to stdout.
+
+The parent directory must already exist. Symbolic-link destinations are rejected;
+the comparison script also rejects either input snapshot as its output. Saved
+files take the temporary file's permissions rather than preserving the old
+file's permissions. Replacement is atomic on filesystems that support atomic
+rename; this is not a guarantee against data loss during a power failure.
+
 ### UTF-8 export
 
-Reports written to stdout use UTF-8, including redirected output on systems
-with a legacy locale. Chinese characters and emoji are preserved without
-changing Python's encoding settings. For example, in Windows Command Prompt
-(`cmd.exe`):
+File exports and stdout use UTF-8, including systems with a legacy locale.
+Chinese characters and emoji are preserved without changing Python's encoding
+settings. For example, in Windows Command Prompt (`cmd.exe`):
 
 ```bat
-python contribution_report.py Doribelove --format json > contributions.json
-python contribution_report.py Doribelove > contributions.md
+python contribution_report.py Doribelove --format json --output contributions.json
+python contribution_report.py Doribelove --output contributions.md
 ```
 
 Open the exported files as UTF-8 in your editor. An interactive terminal also
@@ -77,7 +90,7 @@ PR membership, review decisions, draft status and merge state offline:
 
 ```sh
 python3 compare_reports.py before.json after.json
-python3 compare_reports.py before.json after.json --format json > changes.json
+python3 compare_reports.py before.json after.json --format json --output changes.json
 ```
 
 The result separates added, removed, changed and unchanged PRs and preserves
@@ -152,7 +165,9 @@ Only public PR metadata is requested, always from `github.com`, including when
 `GH_HOST` is set to a different host. GitHub CLI manages authentication; this
 script never reads or stores credentials. No shell commands are constructed from
 user input. No report is uploaded or published, and no scheduler is installed.
-Output goes to stdout only after all pages succeed. Errors go to stderr with
+Output is emitted only after all pages succeed. With `--output`, API and file-write
+failures leave an existing report intact; shell `>` redirection clears its target
+before the script starts. Errors go to stderr with
 exit status 1; invalid arguments use argparse's exit status 2. Raw CLI output is
 not echoed on API failures, so use `gh auth status` separately for diagnostics.
 
@@ -174,7 +189,7 @@ Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
 API failures, input validation, date-filter combinations, Unicode titles across
 system locales, CSV quoting and spreadsheet text protection, snapshot validation
-and comparison, and Markdown escaping.
+and comparison, Markdown escaping, and file preservation during failed exports.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.

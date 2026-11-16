@@ -4,11 +4,11 @@ Save JSON reports at two times using the same author and options, then compare
 them locally:
 
 ```sh
-python3 contribution_report.py Doribelove --format json > before.json
+python3 contribution_report.py Doribelove --format json --output before.json
 # Run the next export when you want to check for changes.
-python3 contribution_report.py Doribelove --format json > after.json
+python3 contribution_report.py Doribelove --format json --output after.json
 python3 compare_reports.py before.json after.json
-python3 compare_reports.py before.json after.json --format json > changes.json
+python3 compare_reports.py before.json after.json --format json --output changes.json
 ```
 
 The comparison uses only the two UTF-8 JSON files. It needs Python 3.10 or later
@@ -16,6 +16,11 @@ and this repository's scripts; it does not call GitHub or require an installed
 or authenticated `gh`. UTF-8 files with a byte-order mark are also accepted.
 Pass files in the desired before/after order; their generation times appear in
 the result. The comparison preserves this order rather than sorting by date.
+
+`--output PATH` saves the completed comparison as UTF-8 and leaves stdout empty.
+An invalid snapshot or failed write keeps an existing output file intact. The
+output must be distinct from both input snapshots and cannot be a symbolic link;
+its parent directory must already exist. See [file export behavior](../README.md#save-reports-safely).
 
 The result separates:
 

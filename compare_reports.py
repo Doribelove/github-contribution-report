@@ -247,16 +247,26 @@ def main(argv=None):
     parser.add_argument("before", help="earlier JSON snapshot")
     parser.add_argument("after", help="later JSON snapshot with the same author and filters")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    parser.add_argument("--output", metavar="PATH", help="save UTF-8 output to a file distinct from both snapshots")
     args = parser.parse_args(argv)
     try:
+        if args.output is not None:
+            destination = Path(args.output)
+            for source in (Path(args.before), Path(args.after)):
+                if (destination.resolve() == source.resolve()
+                        or (destination.exists() and source.exists() and destination.samefile(source))):
+                    raise ComparisonError("output path must be different from both input snapshots")
         comparison = compare_snapshots(load_snapshot(args.before, "before"),
                                        load_snapshot(args.after, "after"))
         output = (json.dumps(comparison, ensure_ascii=False, indent=2) + "\n"
                   if args.format == "json" else to_markdown(comparison))
-    except ComparisonError as exc:
+        report.write_output(output, args.output)
+    except (ComparisonError, report.ReportError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    report.write_output(output)
+    except (OSError, RuntimeError):
+        print("error: could not inspect output path; check its directory and permissions", file=sys.stderr)
+        return 1
     return 0
 
 
