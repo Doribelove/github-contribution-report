@@ -1,5 +1,7 @@
 # GitHub Contribution Report
 
+[![Tests](https://github.com/Doribelove/github-contribution-report/actions/workflows/tests.yml/badge.svg)](https://github.com/Doribelove/github-contribution-report/actions/workflows/tests.yml)
+
 A small command-line GitHub API integration that reports a developer's public
 authored pull requests. It answers a recurring contribution-tracking question:
 which changes were merged, which remain open, and which were closed without merge?
@@ -161,6 +163,12 @@ Run the standard-library test suite without network access:
 ```sh
 python3 -m unittest -v
 ```
+
+The same suite runs automatically on every push and pull request. The workflow
+checks Python 3.10–3.15 on Linux and Python 3.10/3.15 on Windows, including actual
+subprocess tests for redirected Unicode output. It needs no GitHub CLI login,
+API credentials or third-party Python packages. A manual run is also available
+from the repository's Actions tab.
 
 Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
