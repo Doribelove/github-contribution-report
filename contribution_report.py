@@ -317,12 +317,22 @@ def write_output(text, path=None):
                 except OSError as exc:
                     raise ReportError("could not remove temporary output file; check directory permissions") from exc
         return
-    buffer = getattr(sys.stdout, "buffer", None)
-    if buffer is not None:
-        buffer.write(text.encode("utf-8"))
-    else:
+    try:
+        buffer = getattr(sys.stdout, "buffer", None)
+        stream = buffer if buffer is not None else sys.stdout
         # Text-only streams, such as StringIO, already preserve Unicode.
-        sys.stdout.write(text)
+        stream.write(text.encode("utf-8") if buffer is not None else text)
+        # Detect buffered failures here instead of during interpreter shutdown.
+        stream.flush()
+    except (OSError, UnicodeError) as exc:
+        # Python retries buffered stdout at shutdown. Redirect its descriptor so
+        # a failed pipe/destination cannot cause a second error or exit code 120.
+        try:
+            with open(os.devnull, "wb") as sink:
+                os.dup2(sink.fileno(), sys.stdout.fileno())
+        except (AttributeError, OSError, ValueError):
+            pass  # In-memory/caller-provided streams may have no descriptor.
+        raise ReportError("could not write output to stdout; check the pipe or redirected destination") from exc
 
 
 def main(argv=None):

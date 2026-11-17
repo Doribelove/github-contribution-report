@@ -170,6 +170,8 @@ failures leave an existing report intact; shell `>` redirection clears its targe
 before the script starts. Errors go to stderr with
 exit status 1; invalid arguments use argparse's exit status 2. Raw CLI output is
 not echoed on API failures, so use `gh auth status` separately for diagnostics.
+Both scripts flush stdout before reporting success. A closed pipe or a failed
+redirected write produces a concise stderr error and exit status 1.
 
 ## Development
 
@@ -189,7 +191,8 @@ Tests mock GitHub CLI transport and cover pagination, the search cap, empty
 results, incomplete results, repository and ownership filtering, state counts,
 API failures, input validation, date-filter combinations, Unicode titles across
 system locales, CSV quoting and spreadsheet text protection, snapshot validation
-and comparison, Markdown escaping, and file preservation during failed exports.
+and comparison, Markdown escaping, file preservation during failed exports,
+and stdout write/flush failures with real subprocess pipes.
 
 Support: [doribelove@gmail.com](mailto:doribelove@gmail.com). Bug reports with a
 minimal reproduction are welcome; do not include credentials or private data.
