@@ -53,6 +53,24 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(result["before_generated_at"], before["generated_at"])
         self.assertEqual(result["after_generated_at"], after["generated_at"])
 
+    def test_equivalent_pr_timestamps_keep_merged_pr_unchanged(self):
+        before = snapshot([pr(state="MERGED", updatedAt="2026-11-14T23:15:00Z",
+                              mergedAt="2026-11-14T23:15:00.123456700Z")])
+        after = deepcopy(before)
+        after["pull_requests"][0].update(updatedAt="2026-11-15T07:15:00.000+08:00",
+                                         mergedAt="2026-11-14T18:15:00.1234567-05:00")
+        result = comparison.compare_snapshots(before, after)
+        self.assertEqual(result["changed"], [])
+        self.assertEqual(result["counts"]["unchanged"], 1)
+
+    def test_submicrosecond_change_keeps_original_timestamp_strings(self):
+        old = "2026-11-15T00:00:00.000000001Z"
+        new = "2026-11-15T08:00:00.000000002+08:00"
+        result = comparison.compare_snapshots(snapshot([pr(updatedAt=old)]),
+                                              snapshot([pr(updatedAt=new)]))
+        self.assertEqual(result["changed"][0]["changes"],
+                         {"updatedAt": {"before": old, "after": new}})
+
     def test_added_removed_and_unchanged_are_disjoint_and_sorted(self):
         result = comparison.compare_snapshots(snapshot([pr(4), pr(1), pr(2)]),
                                               snapshot([pr(10), pr(3), pr(2)]))
@@ -195,6 +213,8 @@ class ComparisonTests(unittest.TestCase):
                              ("reviewDecision", "UNKNOWN"), ("relationship", "own"),
                              ("updatedAt", "2026-02-30T00:00:00Z"),
                              ("updatedAt", "2026-11-15T00:00:00"),
+                             ("updatedAt", "2026-11-15T00:00:00+05:60"),
+                             ("mergedAt", "2026-11-15T00:00:00-24:00"),
                              ("mergedAt", "invalid"), ("title", "\ud800")):
             invalid = snapshot([pr()])
             invalid["pull_requests"][0][field] = value

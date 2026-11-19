@@ -20,19 +20,23 @@ CHANGE_FIELDS = (
     "state", "reviewDecision", "isDraft", "updatedAt", "mergedAt", "title",
     "repository.isFork",
 )
+TIMESTAMP_PATTERN = re.compile(
+    r"(?P<second>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+    r"(?:\.(?P<fraction>[0-9]+))?(?P<offset>Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+)
 
 
 class ComparisonError(Exception):
     """The supplied files cannot form a reliable snapshot comparison."""
 
 
-def timestamp(value):
-    if not isinstance(value, str) or not re.fullmatch(
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-        r"(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})", value
-    ):
+def timestamp_key(value):
+    """Compare whole seconds with their offset and retain exact fractional precision."""
+    match = TIMESTAMP_PATTERN.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
         raise ValueError("expected an ISO timestamp with a time zone")
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    second = datetime.fromisoformat(match["second"] + match["offset"].replace("Z", "+00:00"))
+    return second, (match["fraction"] or "").rstrip("0")
 
 
 def normalized_scope(value):
@@ -71,7 +75,7 @@ def validate_snapshot(snapshot, label):
         if not isinstance(snapshot["username"], str):
             raise ValueError("username must be a string")
         username = report.valid_username(snapshot["username"])
-        timestamp(snapshot["generated_at"])
+        timestamp_key(snapshot["generated_at"])
         for field in ("scope", "search_query"):
             if not isinstance(snapshot[field], str) or not snapshot[field].strip():
                 raise ValueError(f"{field} must be nonempty text")
@@ -97,9 +101,9 @@ def validate_snapshot(snapshot, label):
                             f"/pull/{pr['number']}")
             if pr["url"] != expected_url:
                 raise ValueError("PR URL must be canonical")
-            timestamp(pr["updatedAt"])
+            timestamp_key(pr["updatedAt"])
             if pr["mergedAt"] is not None:
-                timestamp(pr["mergedAt"])
+                timestamp_key(pr["mergedAt"])
             own = pr["repository"]["owner"]["login"].casefold() == username.casefold()
             if pr["relationship"] != ("own" if own else "external"):
                 raise ValueError("PR relationship disagrees with its owner")
@@ -148,10 +152,16 @@ def compare_snapshots(before, after):
     removed = [old[key] for key in sorted(old.keys() - new.keys())]
     changed = []
     for key in sorted(old.keys() & new.keys()):
-        changes = {
-            field: {"before": field_value(old[key], field), "after": field_value(new[key], field)}
-            for field in CHANGE_FIELDS if field_value(old[key], field) != field_value(new[key], field)
-        }
+        changes = {}
+        for field in CHANGE_FIELDS:
+            previous = field_value(old[key], field)
+            current = field_value(new[key], field)
+            if previous == current:
+                continue
+            if (field in ("updatedAt", "mergedAt") and previous is not None and current is not None
+                    and timestamp_key(previous) == timestamp_key(current)):
+                continue
+            changes[field] = {"before": previous, "after": current}
         if changes:
             changed.append({"before": old[key], "after": new[key], "changes": changes})
     return {

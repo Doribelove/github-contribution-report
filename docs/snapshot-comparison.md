@@ -32,6 +32,11 @@ The result separates:
   `repository.isFork`. A change to `updatedAt` alone is included.
 - **Unchanged**: the count of shared PRs whose compared fields stayed the same.
 
+For `updatedAt` and `mergedAt`, the comparison uses the instant in time.
+For example, `08:00:00+08:00` and `00:00:00.000Z` on the same date match.
+Differences smaller than a microsecond are preserved. When a timestamp changes,
+the result shows the original text from each snapshot.
+
 Added does not necessarily mean newly created. Visibility changes, repository
 renames or transfers, and GitHub search indexing can affect membership. In an
 open-only report, a PR that becomes merged or closed may appear under removed;
